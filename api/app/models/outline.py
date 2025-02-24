@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from ..models import Base
+from . import Base
 
 class Outline(Base):
     """Represents an outline in the database."""
