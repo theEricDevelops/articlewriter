@@ -1,30 +1,49 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..dependencies import get_db
-from ..services import get_all_topics, get_topic_by_id
-from ..services import generate_topics_ai
-from ..models import TopicModel
 from typing import List
+from ..dependencies import get_db
+from ..models.topic import Topic
+from ..schemas.topics import TopicCreate, TopicUpdate, TopicResponse
 
 router = APIRouter()
 
-# Generate topics using AI (async)
-@router.post("/generate", response_model=List[TopicModel])
-async def generate_topics(prompt: str):
-    """Generate topics based on a prompt using an AI service."""
-    return await generate_topics_ai(prompt)
+@router.post("/", response_model=TopicResponse)
+async def create_topic(topic: TopicCreate, db: Session = Depends(get_db)):
+    db_topic = Topic(**topic.dict())
+    db.add(db_topic)
+    db.commit()
+    db.refresh(db_topic)
+    return db_topic
 
-# List all topics (async)
-@router.get("/", response_model=List[TopicModel])
-async def list_topics(db: Session = Depends(get_db)):
-    """Retrieve all topics from the database."""
-    return await get_all_topics(db)
+@router.get("/", response_model=List[TopicResponse])
+async def read_topics(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    topics = db.query(Topic).offset(skip).limit(limit).all()
+    return topics
 
-# Get a specific topic by ID (async)
-@router.get("/{topic_id}", response_model=TopicModel)
-async def get_topic(topic_id: int, db: Session = Depends(get_db)):
-    """Retrieve a topic by its ID."""
-    topic = await get_topic_by_id(db, topic_id)
-    if not topic:
+@router.get("/{topic_id}", response_model=TopicResponse)
+async def read_topic(topic_id: int, db: Session = Depends(get_db)):
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
     return topic
+
+@router.put("/{topic_id}", response_model=TopicResponse)
+async def update_topic(topic_id: int, topic_update: TopicUpdate, db: Session = Depends(get_db)):
+    db_topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if db_topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    update_data = topic_update.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_topic, key, value)
+    db.commit()
+    db.refresh(db_topic)
+    return db_topic
+
+@router.delete("/{topic_id}", response_model=TopicResponse)
+async def delete_topic(topic_id: int, db: Session = Depends(get_db)):
+    db_topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if db_topic is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    db.delete(db_topic)
+    db.commit()
+    return db_topic
