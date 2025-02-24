@@ -3,4 +3,6 @@ from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
-from .topic import Topic as TopicModel
+from .topic import Topic
+from .source import Source
+from .article import Article

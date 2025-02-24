@@ -6,33 +6,33 @@ from sqlalchemy import create_engine
 load_dotenv()
 
 # Retrieve environment variables
-DATABASE_PROVIDER = os.getenv("DATABASE_PROVIDER")
-DATABASE_NAME = os.getenv("DATABASE_NAME")
-DATABASE_DIR = os.getenv("DATABASE_DIR", "data")  # Default to "data" if not set
+DB_ENGINE = os.getenv("DB_ENGINE")
+DB_NAME = os.getenv("DB_NAME")
+DB_DIR = os.getenv("DB_DIR", "data")  # Default to "data" if not set
 
 # Check if required variables are set
-if not DATABASE_PROVIDER:
-    raise ValueError("DATABASE_PROVIDER not found in .env file")
-if not DATABASE_NAME:
-    raise ValueError("DATABASE_NAME not found in .env file")
+if not DB_ENGINE:
+    raise ValueError("DB_ENGINE not found in .env file")
+if not DB_NAME:
+    raise ValueError("DB_NAME not found in .env file")
 
 # Ensure the provider is SQLite
-if DATABASE_PROVIDER.lower() != "sqlite":
+if DB_ENGINE.lower() != "sqlite":
     raise ValueError("This script only supports SQLite databases")
 
 # Construct the database file path
-db_file = f"{DATABASE_NAME}.db"
-db_path = os.path.join(DATABASE_DIR, db_file) if DATABASE_DIR else db_file
+db_file = f"{DB_NAME}.db"
+db_path = os.path.join(DB_DIR, db_file) if DB_DIR else db_file
 
 # Ensure the directory exists (if specified)
-if DATABASE_DIR:
-    os.makedirs(DATABASE_DIR, exist_ok=True)
+if DB_DIR:
+    os.makedirs(DB_DIR, exist_ok=True)
 
 # Construct the SQLite database URL
-DATABASE_URL = f"sqlite:///{db_path}"
+DB_URL = f"sqlite:///{db_path}"
 
 # Create the database file by connecting to it
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DB_URL)
 with engine.connect() as connection:
     pass  # Connection creates the file if it doesn't exist
 

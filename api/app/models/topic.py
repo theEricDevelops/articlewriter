@@ -1,9 +1,7 @@
-from sqlalchemy import Column, Integer, String
-from . import Base
-from pydantic import BaseModel
-from typing import Optional
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime
+from sqlalchemy.orm import relationship
 from datetime import datetime
-from sqlalchemy import DateTime
+from ..models import Base
 
 # SQLAlchemy model for the database
 class Topic(Base):
@@ -14,13 +12,4 @@ class Topic(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(datetime.timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(datetime.timezone.utc), onupdate=lambda: datetime.now(datetime.timezone.utc))
 
-# Pydantic model for request/response validation
-class TopicModel(BaseModel):
-    id: int
-    title: str
-    description: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True  # Allows mapping from SQLAlchemy objects
+    articles = relationship("Article", back_populates="topic")

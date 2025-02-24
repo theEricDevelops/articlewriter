@@ -17,17 +17,19 @@ load_dotenv(dotenv_path=os.path.join(project_root, ".env"))
 DB_ENGINE = os.getenv("DB_ENGINE", "sqlite")
 
 if DB_ENGINE == "sqlite":
-    DB_DATA_PATH = os.getenv("DB_DATA_PATH", "../data/test.db")
-    DATABASE_URL = f"sqlite:///{DB_DATA_PATH}"
+    DB_DIR = os.getenv("DB_DIR", os.path.join(project_root, "data"))
+    DB_NAME = os.getenv("DB_NAME", "test")
+    DB_DATA_PATH = os.path.join(DB_DIR, f"{DB_NAME}.db")
+    DB_URL = f"sqlite:///{DB_DATA_PATH}"
 else:
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
     DB_HOST = os.getenv("DB_HOST", "localhost")
     DB_PORT = os.getenv("DB_PORT", "5432")
     DB_NAME = os.getenv("DB_NAME")
-    DATABASE_URL = f"{DB_ENGINE}://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    DB_URL = f"{DB_ENGINE}://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DB_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Dependency to provide a database session
