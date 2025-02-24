@@ -21,7 +21,5 @@ class Article(Base):
     
     # Relationships
     topic = relationship("Topic", back_populates="articles")
-    #outline = relationship("Outline", back_populates="articles")
+    outline = relationship("Outline", back_populates="articles")
     sources = relationship("Source", secondary="article_sources", back_populates="articles")
-
-# TO DO: in models/outline.py: articles = relationship("Article", back_populates="outline")

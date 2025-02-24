@@ -6,3 +6,4 @@ Base = declarative_base()
 from .topic import Topic
 from .source import Source
 from .article import Article
+from .outline import Outline
