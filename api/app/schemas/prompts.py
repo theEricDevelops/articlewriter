@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List, Dict
 
@@ -29,5 +29,4 @@ class PromptResponse(PromptBase):
     provider_ids: List[int]  # List of associated provider IDs
     prompt_metadata: Optional[Dict] = None  # Metadata from Prompt_Providers (if single provider context)
 
-    class Config:
-        from_attributes = True  # Allows mapping from SQLAlchemy objects
+    model_config = ConfigDict(from_attributes=True) # Allows mapping from SQLAlchemy objects

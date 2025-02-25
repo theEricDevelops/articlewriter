@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
 
@@ -29,5 +29,4 @@ class SourceResponse(SourceBase):
     updated_at: datetime
     article_ids: list[int]  # List of associated article IDs
 
-    class Config:
-        from_attributes = True  # Allows mapping from SQLAlchemy objects
+    model_config = ConfigDict(from_attributes=True) # Allows mapping from SQLAlchemy objects

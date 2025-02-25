@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from . import Base
 
 class Job(Base):
@@ -11,9 +11,9 @@ class Job(Base):
     status = Column(String, nullable=False, default="pending")  # e.g., "pending", "completed", "failed"
     article_id = Column(Integer, ForeignKey("articles.id"), nullable=True)
     provider_id = Column(Integer, ForeignKey("providers.id"), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(datetime.timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(datetime.timezone.utc), 
-                       onupdate=lambda: datetime.now(datetime.timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), 
+                       onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     article = relationship("Article", back_populates="jobs")

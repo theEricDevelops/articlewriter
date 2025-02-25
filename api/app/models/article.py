@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from . import Base
 
 class Article(Base):
@@ -11,9 +11,9 @@ class Article(Base):
     title = Column(String, nullable=False, index=True)
     status = Column(String, nullable=False, default="draft")  # e.g., "draft", "edited", "published"
     article_metadata = Column(Text)  # JSON string for instructions, e.g., {"tone": "formal"}
-    created_at = Column(DateTime, default=lambda: datetime.now(datetime.timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(datetime.timezone.utc), 
-                       onupdate=lambda: datetime.now(datetime.timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), 
+                       onupdate=lambda: datetime.now(timezone.utc))
     
     # Foreign keys
     topic_id = Column(Integer, ForeignKey("topics.id"), nullable=False)

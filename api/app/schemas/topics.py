@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 
@@ -24,5 +24,4 @@ class TopicResponse(TopicBase):
     article_ids: List[int]  # List of associated article IDs
     outline_ids: List[int]  # List of associated outline IDs
 
-    class Config:
-        from_attributes = True  # Allows mapping from SQLAlchemy objects
+    model_config = ConfigDict(from_attributes = True)  # Allows mapping from SQLAlchemy objects
