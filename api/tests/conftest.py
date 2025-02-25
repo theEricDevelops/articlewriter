@@ -4,6 +4,8 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from alembic.config import Config
+from alembic import command
 
 from app.models import Base
 from app.models.topic import Topic
@@ -14,6 +16,8 @@ from app.models.prompt import Prompt
 from app.models.provider import Provider
 from app.models.prompt_provider import PromptProvider
 from app.models.job import Job
+
+from 
 
 # Use in-memory SQLite database for testing
 @pytest.fixture(scope="function")
