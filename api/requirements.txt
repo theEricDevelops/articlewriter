@@ -4,3 +4,4 @@ sqlalchemy
 alembic
 python-dotenv
 pytest
+pytest-asyncio

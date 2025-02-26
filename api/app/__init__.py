@@ -1,9 +1,12 @@
 # app/__init__.py
-
+import os
 from fastapi import FastAPI
+from .constants import PROJECT_ROOT, API_ROOT
+from .models import Base
 from .routes import topics, sources, articles, outlines, prompts, providers, jobs
 
 app = FastAPI()
+
 
 # Include the routers with prefixes
 app.include_router(topics.router, prefix="/topics", tags=["topics"])
