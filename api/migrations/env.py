@@ -10,7 +10,7 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
-from app.dependencies import DB_URL
+from app.utils.db_utils import db_manager
 from app.models import Base
 
 # Set the target metadata for autogenerating migrations
@@ -20,8 +20,10 @@ target_metadata = Base.metadata
 # access to the values within the .ini file in use.
 config = context.config
 
+db_url = db_manager._get_db_url()
+
 # Set the database URL dynamically
-config.set_main_option('sqlalchemy.url', DB_URL)
+config.set_main_option('sqlalchemy.url', db_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

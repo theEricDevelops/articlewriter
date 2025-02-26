@@ -4,8 +4,9 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from alembic.config import Config
-from alembic import command
+from alembic.config import Config as AlembicConfig
+from alembic import command as AlembicCommand
+from unittest.mock import patch
 
 from app.models import Base
 from app.models.topic import Topic
@@ -17,7 +18,48 @@ from app.models.provider import Provider
 from app.models.prompt_provider import PromptProvider
 from app.models.job import Job
 
-from 
+from app.utils.db_utils import DatabaseManager
+
+TEST_DB_PATH = "test_database.db"
+
+@pytest.fixture(scope="session")
+def db_manager():
+    # Set environment variables for testing
+    os.environ['DB_ENGINE'] = 'sqlite'
+    os.environ['DB_DIR'] = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+    os.environ['DB_NAME'] = os.path.splitext(TEST_DB_PATH)[0]
+
+    # Initialize the database manager
+    db_manager = DatabaseManager()
+
+    # Run Alembic migrations to create schema
+    alembic_cfg = AlembicConfig("../alembic.ini")
+    AlembicCommand.upgrade(alembic_cfg, "head")
+
+    yield db_manager
+
+    # Clean up the test database
+    db_manager.engine.dispose()
+    test_db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", TEST_DB_PATH)
+    if os.path.exists(test_db_path):
+        os.remove(test_db_path)
+
+@pytest.fixture
+def db_session(db_manager):
+    db = next(db_manager.get_db())
+    try:
+        yield db
+    finally:
+        db.close()
+
+@pytest.fixture
+def mock_db_config():
+    with patch.dict(os.environ, {
+        'DB_ENGINE': 'sqlite',
+        'DB_DIR': os.path.dirname(os.path.abspath(__file__)),
+        'DB_NAME': 'mock_test_db'
+    }, clear=True):
+        yield
 
 # Use in-memory SQLite database for testing
 @pytest.fixture(scope="function")

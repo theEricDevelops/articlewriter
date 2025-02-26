@@ -43,6 +43,13 @@ next-env.d.ts
 # python
 .venv/
 __pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+*.dist-info/
 
 # Node
 node_modules/
