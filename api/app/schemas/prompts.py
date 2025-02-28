@@ -2,6 +2,8 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List, Dict
 
+__all__ = ["PromptBase", "PromptCreate", "PromptUpdate", "PromptResponse"]
+
 class PromptBase(BaseModel):
     """Base model for shared prompt fields."""
     name: str

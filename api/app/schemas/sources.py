@@ -2,6 +2,8 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
 
+__all__ = ["SourceBase", "SourceCreate", "SourceUpdate", "SourceResponse"]
+
 class SourceBase(BaseModel):
     """Base model for shared source fields."""
     url: str

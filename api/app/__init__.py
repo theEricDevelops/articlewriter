@@ -2,6 +2,7 @@
 import os
 from fastapi import FastAPI
 from .constants import PROJECT_ROOT, API_ROOT
+from app.config import Config
 from .models import Base
 from .routes import topics, sources, articles, outlines, prompts, providers, jobs
 

@@ -2,6 +2,8 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
 
+__all__ = ["JobBase", "JobCreate", "JobUpdate", "JobResponse"]
+
 class JobBase(BaseModel):
     """Base model for shared job fields."""
     status: str = "pending"  # e.g., "pending", "completed", "failed"

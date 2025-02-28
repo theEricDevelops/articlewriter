@@ -2,6 +2,10 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List, Dict, Union
 
+__all__ = ["OutlineElementMetadata", "OutlineElementIntroduction", "OutlineElementBody", 
+           "OutlineElementBodySection", "OutlineElementConclusion", "OutlineInstructions", 
+           "OutlineResponse"]
+
 class OutlineElementMetadata(BaseModel):
     element: str = "metadata"
     title: str

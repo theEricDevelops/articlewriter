@@ -2,6 +2,9 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 
+# Define which classes should be exported when using "from .topics import *"
+__all__ = ["TopicBase", "TopicCreate", "TopicUpdate", "TopicResponse"]
+
 class TopicBase(BaseModel):
     """Base model for shared topic fields."""
     title: str

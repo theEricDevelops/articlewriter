@@ -2,6 +2,8 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, Dict
 
+__all__ = ["ArticleBase", "ArticleCreate", "ArticleUpdate", "ArticleResponse"]
+
 class ArticleBase(BaseModel):
     """Base model for shared article fields."""
     title: str
