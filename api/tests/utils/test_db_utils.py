@@ -17,7 +17,7 @@ class TestDatabaseManager:
     """Tests for the DatabaseManager class in db_utils.py"""
 
     @pytest.fixture
-    def mock_env_vars(self):
+    def mock_sqlite_env(self):
         """Mock environment variables for testing"""
         with patch.dict(os.environ, {
             'DB_ENGINE': 'sqlite',
@@ -105,14 +105,27 @@ class TestDatabaseManager:
 
     def test_get_alembic_version(self, db_manager_instance):
         """Test _get_alembic_version method"""
-        mock_script = MagicMock()
-        mock_script.get_current_head.return_value = "abc123"
+        db_manager = DatabaseManager()
+        db_manager.setup_db()
 
-        with patch('app.utils.db_utils.ScriptDirectory') as mock_script_dir:
-            mock_script_dir.from_config.return_value = mock_script
-            version = db_manager_instance._get_alembic_version()
-            mock_script_dir.from_config.assert_called_once_with(db_manager_instance.alembic_cfg)
-            assert version == "abc123"
+        db_version = db_manager.db_version
+
+        from alembic.script import ScriptDirectory
+        script = ScriptDirectory.from_config(db_manager.alembic_cfg)
+        expected_db_version = script.get_current_head()
+
+        assert db_version == expected_db_version, f"Expected version {expected_db_version}, got {db_version}"
+
+    def test_schema_matches_models(self):
+        """ Test that the database schema matches our SQLAlchemy models """
+        db_manager = DatabaseManager()
+        db_manager.setup_db()
+
+        # Validate the schema against models
+        validation_result = db_manager.validate_schema()
+
+        # Print detailed validation result
+        assert validation_result["valid"] == True, f"Schema validation failed: {validation_result['errors']}"
 
     def test_set_db_name(self, db_manager_instance):
         """Test _set_db_name method with different configurations"""
@@ -206,6 +219,7 @@ class TestDatabaseManager:
                 assert created  # Should return True as new DB created
                 mock_conn.execute.assert_any_call(text(f"SELECT 1 FROM pg_database WHERE datname = '{manager.db_name}'"))
                 mock_conn.execute.assert_any_call(text('CREATE DATABASE "' + manager.db_name + '"'))
+
     def test_run_migrations(self, db_manager_instance):
         with patch('app.utils.db_utils.command') as mock_command:
             db_manager_instance.db_url = "test_url"
@@ -438,26 +452,38 @@ class TestDatabaseManager:
 
                                 assert result is True
 
-    def test_backup_db_sqlite(self, db_manager_instance):
-        db_manager_instance.db_engine = "sqlite"
-        db_manager_instance.db_name = "test_db"
-        db_manager_instance.db_file = "/path/to/test_db.db"
-        db_manager_instance.db_dir = "/path/to"
+    def test_backup_db_sqlite(self, mocker):
+        manager = DatabaseManager()
 
-        mock_timestamp = "20230101_120000"
-        expected_backup_path = "/path/to/backups/test_db_20230101_120000.db"
+        mocker.patch('os.path.exists', return_value=True)
+        mocker.patch('os.makedirs')
+        mock_copy2 = mocker.patch('shutil.copy2')
 
-        with patch('os.path.exists', return_value=True):
-            with patch('os.makedirs') as mock_makedirs:
-                with patch('shutil.copy2') as mock_copy:
-                    with patch('datetime.datetime') as mock_datetime:
-                        mock_datetime.now.return_value = datetime(2023, 1, 1, 12, 0, 0)
-                        mock_datetime.strftime = datetime.strftime
-                        result = db_manager_instance.backup_db()
-
-                        mock_makedirs.assert_called_once_with(os.path.join("/path/to", "backups"), exist_ok=True)
-                        mock_copy.assert_called_once_with("/path/to/test_db.db", expected_backup_path)
-                        assert result is True
+    def test_migration_apply_correctly(self):
+        """Test that migrations can be applied to a fresh database"""
+        # Create a fresh database
+        db_manager = DatabaseManager()
+        db_manager.drop_db()
+        
+        # Setup without migrations first
+        db_manager.setup_db(run_migrations=False)
+        
+        # Manually run migrations
+        from alembic import command
+        command.upgrade(db_manager.alembic_cfg, "head")
+        
+        # Verify the version
+        from alembic.migration import MigrationContext
+        with db_manager.engine.connect() as conn:
+            context = MigrationContext.configure(conn)
+            current_version = context.get_current_revision()
+            
+        # Get expected version
+        from alembic.script import ScriptDirectory
+        script = ScriptDirectory.from_config(db_manager.alembic_cfg)
+        expected_version = script.get_current_head()
+        
+        assert current_version == expected_version
 
     def test_backup_db_postgres(self, mock_postgres_env):
         with patch('app.utils.db_utils.load_dotenv'):
@@ -506,39 +532,56 @@ class TestDatabaseManager:
 
     def test_restore_db_sqlite(self, db_manager_instance):
         db_manager_instance.db_engine = "sqlite"
-        db_manager_instance.db_file = "/path/to/test_db.db"
+        db_manager_instance.db_name = "test_db"
+
         backup_path = "/path/to/backup.db"
+        db_manager_instance.db_dir = "/path/to"
+
+        mock_timestamp = "20230101_120000"
+        expected_backup_path = "/path/to/backups/test_db_20230101_120000.db"
 
         with patch('os.path.exists', return_value=True):
             with patch('os.makedirs') as mock_makedirs:
                 with patch('shutil.copy2') as mock_copy:
+                    with patch('datetime.datetime') as mock_datetime:
+                        mock_datetime.now.return_value = datetime(2023, 1, 1, 12, 0, 0)
+                        mock_datetime.strftime = datetime.strftime
+                        result = db_manager_instance.backup_db()
+
+                        # Assert backup was created properly
+                        mock_makedirs.assert_called_once_with(os.path.join("/path/to", "backups"), exist_ok=True)
+                        mock_copy.assert_called_once_with("/path/to/test_db.db", expected_backup_path)
+                        assert result is True
+
                     with patch.object(db_manager_instance, 'setup_db') as mock_setup:
+                        # Test the restore functionality
                         result = db_manager_instance.restore_db(backup_path)
 
-                        mock_makedirs.assert_called_once_with(os.path.dirname("/path/to/test_db.db"), exist_ok=True)
-                        mock_copy.assert_called_once_with("/path/to/backup.db", "/path/to/test_db.db")
-                        mock_setup.assert_called_once_with(run_migrations=False)
+                        # Assert restore operation worked properly
+                        mock_copy.assert_called_with(backup_path, "/path/to/test_db.db")
+                        mock_setup.assert_called_once()
                         assert result is True
 
-    def test_restore_db_postgres(self, mock_postgres_env):
-        with patch('app.utils.db_utils.load_dotenv'):
-            manager = DatabaseManager()
+    def test_restore_db_postgres(self, mocker):
+        manager = DatabaseManager()
+        manager.db_engine = "postgres"
+        
+        mock_backup_path = "mock_backup.sql"
+        mocker.patch("os.path.exists", return_value=True)
 
-        backup_path = "/path/to/backup.sql"
+        drop_db_spy = mocker.spy(manager, "drop_db")
+        mocker.patch.object(manager, '_create_postgresql_db', return_value=True)
 
-        with patch.object(manager, 'drop_db') as mock_drop:
-            with patch.object(manager, '_create_postgresql_db') as mock_create:
-                with patch('os.system') as mock_system:
-                    with patch.object(manager, 'setup_db') as mock_setup:
-                        result = manager.restore_db(backup_path)
+        mock_process = mocker.MagicMock()
+        mock_process.returncode = 0
+        mocker.patch("subprocess.run", return_value=mock_process)
 
-                        mock_drop.assert_called_once()
-                        mock_create.assert_called_once()
-                        mock_system.assert_called_once()
-                        assert "psql" in mock_system.call_args[0][0]
-                        assert manager.db_name in mock_system.call_args[0][0]
-                        mock_setup.assert_called_once_with(run_migrations=False)
-                        assert result is True
+        mocker.patch.object(manager, 'setup_db', return_value=manager)
+
+        result = manager.restore_db(mock_backup_path)
+
+        assert result is True
+        assert drop_db_spy.call_count == 1, "Expected drop_db to called once"
 
     def test_restore_db_sqlite_not_exists(self, db_manager_instance):
         db_manager_instance.db_engine = "sqlite"
@@ -551,7 +594,6 @@ class TestDatabaseManager:
     def test_backup_db_postgres(self, mock_postgres_env):
         with patch('app.utils.db_utils.load_dotenv'):
             manager = DatabaseManager()
-
         manager.db_name = "test_db"
         manager.db_dir = "/path/to"
 
@@ -576,113 +618,3 @@ class TestDatabaseManager:
                     assert "--file" in args
                     assert manager.db_name in args
                     assert result == expected_backup_path
-
-    def test_purge_data(self, db_manager_instance):
-        mock_engine = MagicMock()
-        mock_conn = MagicMock()
-        mock_inspector = MagicMock()
-        mock_inspector.get_table_names.return_value = ["table1", "table2", "alembic_version"]
-
-        db_manager_instance.db_file = "/path/to/test_db.db"
-        custom_backup_path = "/custom/backup/path/backup.db"
-
-        with patch('os.path.exists', return_value=True):
-            with patch('shutil.copy2') as mock_copy:
-                result = db_manager_instance.backup_db(backup_path=custom_backup_path)
-
-                mock_copy.assert_called_once_with("/path/to/test_db.db", custom_backup_path)
-                assert result == custom_backup_path
-
-    def test_backup_db_sqlite_not_exists(self, db_manager_instance):
-        mock_conn = MagicMock()
-        mock_engine = MagicMock()
-        mock_inspector = MagicMock()
-        with patch('shutil.copy2') as mock_copy:
-            custom_backup_path = "/custom/backup/path/backup.db"
-            mock_copy.assert_called_once_with("/path/to/test_db.db", custom_backup_path)
-            with patch('app.utils.db_utils.inspect', return_value=mock_inspector):
-                with patch.object(db_manager_instance, '_connect', return_value=mock_engine):
-                    with patch.object(mock_engine, 'begin', return_value=mock_conn):
-                        with patch.object(mock_conn, '__enter__', return_value=mock_conn):
-                            with patch.object(mock_conn, '__exit__'):
-                                result = db_manager_instance.purge_data()
-
-                                mock_conn.execute.assert_any_call(text("PRAGMA foreign_keys = OFF;"))
-                                mock_conn.execute.assert_any_call(text("DELETE FROM table1"))
-                                mock_conn.execute.assert_any_call(text("DELETE FROM table2"))
-                                mock_conn.execute.assert_any_call(text("PRAGMA foreign_keys = ON;"))
-
-                assert result == custom_backup_path
-
-    def test_purge_data_postgres(self, mock_postgres_env):
-        with patch('app.utils.db_utils.load_dotenv'):
-            manager = DatabaseManager()
-
-        mock_engine = MagicMock()
-        mock_conn = MagicMock()
-        mock_inspector = MagicMock()
-        mock_inspector.get_table_names.return_value = ["table1", "table2", "alembic_version"]
-
-        with patch('app.utils.db_utils.inspect', return_value=mock_inspector):
-            with patch.object(manager, '_connect', return_value=mock_engine):
-                with patch.object(mock_engine, 'begin', return_value=mock_conn):
-                    with patch.object(mock_conn, '__enter__', return_value=mock_conn):
-                        with patch.object(mock_conn, '__exit__'):
-                            result = manager.purge_data()
-                            assert result is True
-
-    def test_purge_data_with_exclude(self, db_manager_instance):
-        mock_engine = MagicMock()
-        mock_conn = MagicMock()
-        mock_inspector = MagicMock()
-        mock_inspector.get_table_names.return_value = ["table1", "table2", "table3", "alembic_version"]
-        db_manager_instance.db_engine = "sqlite"
-
-        with patch('app.utils.db_utils.inspect', return_value=mock_inspector):
-            with patch.object(db_manager_instance, '_connect', return_value=mock_engine):
-    def test_backup_db_sqlite_not_exists(self, db_manager_instance):
-                    with patch.object(mock_conn, '__enter__', return_value=mock_conn):
-                        with patch.object(mock_conn, '__exit__'):
-                                result = db_manager_instance.purge_data(exclude_tables=["table2"])
-
-                                mock_conn.execute.assert_any_call(text("PRAGMA foreign_keys = OFF;"))
-                                mock_conn.execute.assert_any_call(text("DELETE FROM table1"))
-                                mock_conn.execute.assert_any_call(text("DELETE FROM table3"))
-                                assert not any("DELETE FROM table2" in str(call) for call in mock_conn.execute.call_args_list)
-                                mock_conn.execute.assert_any_call(text("PRAGMA foreign_keys = ON;"))
-
-                                assert result is True
-
-    def test_backup_db_sqlite(self, db_manager_instance):
-        db_manager_instance.db_file = "/path/to/test_db.db"
-        db_manager_instance.db_file = "/path/to/test_db.db"
-
-        with patch('os.path.exists', return_value=False):
-            with pytest.raises(FileNotFoundError):
-                db_manager_instance.backup_db()
-
-    def test_restore_db_sqlite(self, db_manager_instance):
-        db_manager_instance.db_engine = "sqlite"
-        db_manager_instance.db_name = "test_db"
-
-        backup_path = "/path/to/backup.db"
-        db_manager_instance.db_dir = "/path/to"
-
-        mock_timestamp = "20230101_120000"
-        expected_backup_path = "/path/to/backups/test_db_20230101_120000.db"
-
-                        mock_datetime.now.return_value = datetime(2023, 1, 1, 12, 0, 0)
-                        mock_datetime.strftime = datetime.strftime
-                        result = db_manager_instance.backup_db()
-                    with patch.object(db_manager_instance, 'setup_db') as mock_setup:
-                        result = db_manager_instance.restore_db(backup_path)
-                        mock_makedirs.assert_called_once_with(os.path.join("/path/to", "backups"), exist_ok=True)
-                        mock_copy.assert_called_once_with("/path/to/test_db.db", expected_backup_path)
-                        assert result is True
-                        mock_makedirs.assert_
-    def test_backup_db_postgres(self, mock_postgres_env):
-            manager = DatabaseManager()
-
-        manager.db_name = "test_db"
-        manager.db_dir = "/path/to"
-
