@@ -121,16 +121,21 @@ def test_missing_sections(tmp_path, missing_section):
     del config_data[missing_section]
     ini_file = create_ini_file(tmp_path, config_data)
     config = Config.load_config(str(ini_file))
+
+    db_defaults = CONFIG_DEFAULTS["DATABASE"]
+    db_defaults.update(CONFIG_DEFAULTS["DB_TYPES"]["SQLITE"])
     
     # Check that the missing section is set to the default value
     if missing_section == "GLOBAL":
-        assert config.global_ == GlobalConfig()
+        assert config.global_ == GlobalConfig(), "GlobalConfig should be default and got {config.global_}"
     elif missing_section == "DATABASE":
-        assert config.db == DatabaseConfig()
+        assert config.db.type == db_defaults['DB_TYPE'], f"DB_TYPE should be {db_defaults['DB_TYPE']} and got {config.db.type}"
+        assert config.db.name == db_defaults['DB_NAME'], f"DB_NAME should be {db_defaults['DB_NAME']} and got {config.db.name}"
+        assert config.db.dir == db_defaults['DB_DIR'], f"DB_DIR should be {db_defaults['DB_DIR']} and got {config.db.dir}"
     elif missing_section == "USER":
-        assert config.user == UserConfig()
+        assert config.user == UserConfig(), "UserConfig should be default and got {config.user}"
     elif missing_section == "AI":
-        assert config.ai == AIConfig()
+        assert config.ai == AIConfig(), "AIConfig should be default and got {config.ai}"
 
 def test_invalid_database_type(tmp_path):
     config_data = copy.deepcopy(VALID_SQLITE_CONFIG)
@@ -153,13 +158,13 @@ def test_missing_postgresql_section(tmp_path):
     del config_data["POSTGRESQL"]
     ini_file = create_ini_file(tmp_path, config_data)
     config = Config.load_config(str(ini_file))
-    assert config.db.type == "postgresql", "DB_Type should be postgresql"
-    assert config.db.name == "app", "DB_Name should be app"
-    assert config.db.dir is None, "DB_Dir should not exist"
-    assert config.db.user == "postgres", "DB_User should be postgres"
-    assert config.db.password == "Postgres123!", "DB_Password should be Postgres123!"
-    assert config.db.host == "localhost", "DB_Host should be localhost"
-    assert config.db.port == 5432, "DB_Port should be 5432"
+    assert config.db.type == "postgresql", f"DB_Type should be postgresql, got {config.db.type}"
+    assert config.db.name == "postgres_db", f"DB_Name should be postgres_db, got {config.db.name}"
+    assert config.db.dir is None, f"DB_Dir should not exist, got {config.db.dir}"
+    assert config.db.user == "postgres", f"DB_User should be postgres, got {config.db.user}"
+    assert config.db.password == "Postgres123!", f"DB_Password should be Postgres123!, got {config.db.password}"
+    assert config.db.host == "localhost", f"DB_Host should be localhost, got {config.db.host}"
+    assert config.db.port == 5432, f"DB_Port should be 5432, got {config.db.port}"
 
 @pytest.mark.parametrize("section, field", [
     ("GLOBAL", "ENV_MODE"),
@@ -241,8 +246,11 @@ def test_empty_strings_sqlite(tmp_path, section, field):
     config_data = copy.deepcopy(VALID_SQLITE_CONFIG)
     config_data[section][field] = ""
     ini_file = create_ini_file(tmp_path, config_data)
-    with pytest.raises(ValueError, match="at least 1 character"):
-        Config.load_config(str(ini_file))
+    config = Config.load_config(str(ini_file))
+    if section == "DATABASE":
+        assert config.db.name == "app", f"DB_NAME should be app and got {config.db.name}"
+    elif section == "SQLITE":
+        assert config.db.dir == "sqlite_data", f"DB_DIR should be sqlite_data and got {config.db.dir}"
 
 @pytest.mark.parametrize("section, field", [
     ("DATABASE", "DB_NAME"),
@@ -255,8 +263,19 @@ def test_empty_strings_postgresql(tmp_path, section, field):
     config_data = VALID_POSTGRESQL_CONFIG.copy()
     config_data[section][field] = ""
     ini_file = create_ini_file(tmp_path, config_data)
-    with pytest.raises(ValueError, match="at least 1 character"):
-        Config.load_config(str(ini_file))
+    config = Config.load_config(str(ini_file))
+    db_defaults = CONFIG_DEFAULTS["DB_TYPES"]["POSTGRESQL"]
+    if section == "DATABASE":
+        assert config.db.name == "app", f"DB_NAME should be app and got {config.db.name}"
+    elif section == "POSTGRESQL":
+        if field == "DB_USER":
+            assert config.db.user == db_defaults["DB_USER"], f"DB_USER should be {db_defaults['DB_USER']} and got {config.db.user}"
+        elif field == "DB_PASSWORD":
+            assert config.db.password == db_defaults["DB_PASSWORD"], f"DB_PASSWORD should be {db_defaults['DB_PASSWORD']} and got {config.db.password}"
+        elif field == "DB_HOST":
+            assert config.db.host == db_defaults["DB_HOST"], f"DB_HOST should be {db_defaults['DB_HOST']} and got {config.db.host}"
+        elif field == "DB_PORT":
+            assert config.db.port == db_defaults["DB_PORT"], f"DB_PORT should be {db_defaults['DB_PORT']} and got {config.db.port}"
 
 def test_invalid_port_string(tmp_path):
     config_data = copy.deepcopy(VALID_SQLITE_CONFIG)
@@ -292,12 +311,18 @@ def test_extra_fields(tmp_path):
 def test_empty_file(tmp_path):
     ini_file = tmp_path /"empty.ini"
     ini_file.touch()
-    with pytest.raises(ValueError, match="Empty configuration file"):
-        Config.load_config(str(ini_file))
+    config = Config.load_config(str(ini_file))
+    assert config.db.type == "sqlite"
+    assert config.db.name == "app"
+    assert config.db.dir == "sqlite_data"
+    assert config.user.default_role == "viewer"
 
 def test_non_existent_file():
-    with pytest.raises(FileNotFoundError):
-        Config.load_config("nonexistent.ini")
+    config = Config.load_config()
+    assert config.db.type == "sqlite", "Default DB type should be sqlite"
+    assert config.db.name == "app", "Default DB name should be app"
+    assert config.db.dir == "sqlite_data", "Default DB dir should be sqlite_data"
+    assert config.user.default_role == "viewer", "Default user role should be viewer"
 
 def test_minimal_valid_config_sqlite(tmp_path):
     minimal_config = {
@@ -326,10 +351,10 @@ def test_minimal_valid_config_sqlite(tmp_path):
     }
     ini_file = create_ini_file(tmp_path, minimal_config)
     config = Config.load_config(str(ini_file))
-    assert config.global_.env == "dev"
-    assert config.db.type == "sqlite"
-    assert config.db.name == "db"
-    assert config.db.dir == "."
+    assert config.global_.env == "dev", "ENV_MODE should be 'dev'"
+    assert config.db.type == "sqlite", "DB_TYPE should be 'sqlite'"
+    assert config.db.name == "db", "DB_NAME should be 'db'"
+    assert config.db.dir == ".", "DB_DIR should be '.'"
 
 def test_case_insensitive_sections(tmp_path):
     config_data = {

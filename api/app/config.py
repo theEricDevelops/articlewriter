@@ -7,7 +7,7 @@ from typing import Literal, Optional, Union, ClassVar, Any
 from configparser import ConfigParser
 from app.constants import *
 import logging
-from app.constants import API_ROOT
+from app.constants import API_ROOT, CONFIG_DEFAULTS
 
 # Create a custom logger for configuration errors
 class ConfigException(Exception):
@@ -89,9 +89,18 @@ class ConfigLogger(logging.Logger):
             ConfigFileNotFoundError: If the log file path does not exist.
             ConfigFilePermissionError: If the log file is not writable.
         """
-        if os.path.exists(log_path):
-            if os.access(log_path, os.W_OK):
-                return True
+        if Path(log_path).exists():
+            if Path(log_path).is_file():
+                if os.access(log_path, os.W_OK):
+                    with open(log_path, "w") as log_file:
+                        log_file.truncate(0)
+                    return True
+                else:
+                    raise ConfigFilePermissionError(f"Log file is not writable: {log_path}")
+            else:
+                raise ConfigFileError(f"Log path is not a file: {log_path}")
+        else:
+            raise ConfigFileNotFoundError(f"Log file not found: {log_path}")
 
     def _create_log_file(self, log_dir: str, log_path: str) -> None:
         """
@@ -109,7 +118,8 @@ class ConfigLogger(logging.Logger):
         """
         try:
             Path(log_dir).mkdir(parents=True, exist_ok=True)
-            Path(log_path).write_text("")
+            Path(log_path).touch(exist_ok=True)
+            
         except Exception as e:
             raise ConfigFileError("Failed to create log file: " + str(log_path) + ": " + str(e))
 
@@ -414,7 +424,7 @@ class DatabaseConfig(BaseModel):
 class GlobalConfig(BaseModel):
     env: Literal["development", "dev", "production", "prod", "testing"] = Field(default="development", alias="ENV_MODE")
     port: Union[str, int] = Field(default=8000, alias="PORT")
-    log_level: Literal["debug", "info", "warning", "error", "critical"] = Field(default="info", alias="LOG_LEVEL")
+    log_level: Literal["debug", "DEBUG", "info", "INFO", "warning", "WARNING", "error", "ERROR", "critical", "CRITICAL"] = Field(default="info", alias="LOG_LEVEL")
     debug: bool = Field(default=False, alias="DEBUG")
     secret: str = Field(default="default_insecure_key_01234567890_", min_length=32, alias="SECRET_KEY")
 
@@ -454,28 +464,16 @@ class Config(BaseModel):
 
     @staticmethod
     def load_config(file_path: str = config_path) -> 'Config':
-        supported_db_types: dict = {
-            "sqlite": {
-                "name": "sqlite",
-                "aliases": ["sqlite"],
-                "defaults": {
-                    "DB_NAME": "app",
-                    "DB_DIR": "sqlite_data"
-                }
-            },
-            "postgresql": {
-                "name": "postgresql",
-                "aliases": ["postgresql", "postgres"],
-                "defaults": {
-                    "DB_NAME": "app",
-                    "DB_USER": "postgres",
-                    "DB_PASSWORD": "Postgres123!",
-                    "DB_HOST": "localhost",
-                    "DB_PORT": 5432
-                }
-            }
-        }
+        """
+            Load configuration from a file.
 
+        Args:
+            file_path: Path to the configuration file.
+        
+        Returns:
+            Config object.
+        """
+        db_types = [alias for db_type in CONFIG_DEFAULTS["DB_TYPES"].values() for alias in db_type.get("ALIASES", [])]
         config_log.info(f"Loading configuration from: {file_path}")
 
         if not os.path.exists(file_path):
@@ -489,27 +487,49 @@ class Config(BaseModel):
         # Check if the configuration file is empty
         if not parser:
             config_log.error(f"Empty configuration file: {file_path}")
-            
 
-        config_dict = {section.upper(): {key.upper(): value for key, value in parser.items(section) if key.__len__() > 0} for section in parser.sections() if section.__len__() > 0}
+        config_dict = {section.upper(): {key.upper(): value for key, value in parser.items(section) if key.__len__() > 0 and value.__len__() > 0} for section in parser.sections() if section.__len__() > 0}
         config_log.debug(f"CONFIG_DICT: {config_dict}")
 
         # Set sqlite as the default if no DB_TYPE is specified
         db_config = config_dict.get("DATABASE", None)
-        if db_config is None or "DB_TYPE" not in db_config:
+        config_log.debug(f"DB_CONFIG: {db_config}")
+        if db_config is None or db_config.get("DB_TYPE") is None:
             config_log.debug("No DB_TYPE specified, defaulting to sqlite")
             db_config = {"DB_TYPE": "sqlite"}
-        elif db_config.get("DB_TYPE").lower() not in supported_db_types:
+        elif db_config["DB_TYPE"].lower() not in db_types:
+            config_log.debug(f"Unsupported DB_TYPE: {db_config['DB_TYPE']}")
+            config_log.debug(f"Supported DB_TYPES: {CONFIG_DEFAULTS['DB_TYPES'].items()}")
             raise ConfigValueError(f"Unsupported DB_TYPE: {db_config['DB_TYPE']}")
-
+        
         # Pull the DB Params from the config_dict and merge them with the defaults
         # depending on the DB_TYPE
         db_type = db_config["DB_TYPE"].lower()
-        db_params = supported_db_types[db_type]["defaults"]
-        db_params.update(db_config)
-        config_dict.pop(db_type.upper())
-        config_dict["DATABASE"] = db_params
+        config_log.debug(f"DB_TYPE: {db_type}")
 
+        # Get the default values for the specified DB_TYPE
+        db_defaults = CONFIG_DEFAULTS["DB_TYPES"][db_type.upper()]
+        config_log.debug(f"DB_DEFAULTS: {db_defaults}")
+
+        # Get the DB Params from the config_dict
+        db_params = config_dict.get(db_type.upper(), {})
+        config_log.debug(f"DB_PARAMS: {db_params}")
+
+        # Merge the configuration in the correct order:
+        # 1. Defaults
+        # 2. Database section from the config file
+        # 3. Specific DB_TYPE section from the config file
+        merged_config = {**db_defaults, **db_config, **db_params}
+        config_log.debug(f"MERGED_CONFIG: {merged_config}")
+        
+        # Update the DATABASE section with the merged configuration
+        config_dict["DATABASE"] = merged_config
+        config_log.debug(f"Updated DATABASE section: {config_dict['DATABASE']}")
+
+        # Remove the specific DB_TYPE section from the config_dict
+        if db_type.upper() in config_dict:
+            config_dict.pop(db_type.upper())
+            config_log.debug(f"Removed {db_type.upper()} section from config_dict")
 
         valid_sections = [section.upper() for section in ["GLOBAL", "DATABASE", "USER", "AI"]]
         config_dict = {k: v for k, v in config_dict.items() if k in valid_sections}
